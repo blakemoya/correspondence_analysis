@@ -30,13 +30,51 @@ class ca:
     """
 
     def __init__(self, contingency_table):
-        # Return a set with the following values in it
+        """Appendix A of Greenacre 2017"""
         self.rownames = contingency_table.index.values
         self.colnames = contingency_table.columns.values
-        self.N = self.freq_tab(contingency_table)
-        self.rowmass = self.N.sum(axis=1)
-        self.colmass = self.N.sum(axis=0)
-        self.sv = None
+        self.N = contingency_table.values
+        n = contingency_table.sum().sum()
+        p = contingency_table.values / n
+        self.rowmass = p.sum(axis=1)
+        self.colmass = p.sum(axis=0)
+
+         # Step 1: Calculate the matrix S of standardized residuals
+        r = self.rowmass
+        c = self.colmass
+        diag_r = np.diag(r)
+        diag_c = np.diag(c)
+        diag_r_invroot = np.diag(np.reciprocal(np.sqrt(r)))
+        diag_c_invroot = np.diag(np.reciprocal(np.sqrt(c)))
+        stand_resid = diag_r_invroot @ (p - np.outer(r, c)) @ diag_c_invroot
+
+        # Step 2: SVD of standardized residuals
+        u, s, vt = np.linalg.svd(stand_resid, full_matrices=False)
+        self.sv = s[:-1]
+        principal_inertias = self.sv ** 2
+        diag_s = np.diag(s)
+
+        # Step 3: Standard coordinates of rows, phi
+        phi = diag_r_invroot @ u
+
+        # Step 4: Standard coordinates of columns, gamma
+        gam = diag_c_invroot @ vt.T
+
+        # Step 5 : Principal coordinates of rows, F
+        f = phi @ diag_s
+
+        # Step 6: Principal coordinates of columns, G
+        g = gam @ diag_s
+
+        # Step 7: Principal intertias
+        # how to get chi-square distances? is this hidden somewhere around here?
+        diag_lambda = None
+        if len(r) <= len(c):
+            diag_lambda = f @ diag_r @ f.T
+        else:
+            diag_lambda = g @ diag_c @ g.T
+        print(diag_lambda)
+
         self.nd = None
         self.rowdist = None
         self.rowinertia = None
@@ -45,40 +83,9 @@ class ca:
         self.coldist = None
         self.colinertia = None
         self.colcoord = None
-        self.colsup = None
-
-    def analyze(self):
-        """Analysis as per Appendix A of Greenacre 2017"""
-        # Step 1: Calculate the matrix S of standardized residuals
-        prof = self.N.values
-        r = self.rowmass.values
-        c = self.colmass.values
-        diag_r_invroot = np.diag(np.reciprocal(np.sqrt(r)))
-        diag_c_invroot = np.diag(np.reciprocal(np.sqrt(c)))
-        stand_resid = diag_r_invroot @ (prof - np.outer(r, c)) @ diag_c_invroot
-        # Step 2: SVD of standardized residuals
-        u, s, vt = np.linalg.svd(stand_resid, full_matrices=False)
-        diag_s = np.diag(s)
-        # Step 3: Standard coordinates of rows, phi
-        phi = diag_r_invroot @ u
-        # Step 4: Standard coordinates of columns, gamma
-        gam = diag_c_invroot @ vt.T
-        # Step 5 : Principal coordinates of rows, F
-        f = phi @ diag_s
-        # Step 6: Principal coordinates of columns, G
-        g = gam @ diag_s
-
-    
-    def freq_tab(self, contingency_table):
-        n = contingency_table.sum().sum()
-        freq = contingency_table / n
-        return freq
-    
+        self.colsup = None   
 
 
 if __name__ == "__main__":
-    cont = pd.DataFrame([[6, 1, 11], [1, 3, 11], [4, 25, 0], [2, 2, 20]],
-                        columns=['Holidays', 'Half Days', 'Full Days'],
-                        index=['Norway', 'Canada', 'Greece', 'France/Germany'])
+    cont = pd.read_csv('src.csv', index_col=0, header=0)
     C = ca(cont)
-    C.analyze()
