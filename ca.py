@@ -44,6 +44,8 @@ class ca:
         c = self.colmass
         diag_r = np.diag(r)
         diag_c = np.diag(c)
+        diag_r_inv = np.diag(np.reciprocal(r))
+        diag_c_inv = np.diag(np.reciprocal(c))
         diag_r_invroot = np.diag(np.reciprocal(np.sqrt(r)))
         diag_c_invroot = np.diag(np.reciprocal(np.sqrt(c)))
         stand_resid = diag_r_invroot @ (p - np.outer(r, c)) @ diag_c_invroot
@@ -51,14 +53,23 @@ class ca:
         # Step 2: SVD of standardized residuals
         u, s, vt = np.linalg.svd(stand_resid, full_matrices=False)
         self.sv = s[:-1]
-        principal_inertias = self.sv ** 2
+        out1 = pd.DataFrame([(s ** 2)[:-1], ((s ** 2) / (s ** 2).sum())[:-1]],
+                            index = ['Value', 'Percentage'],
+                            columns = range(1, len(s)))
+        out1.loc['Percentage'] = out1.loc['Percentage'].apply('{:.1%}'.format)
+        print(' Principal inertias (eigenvalues):')
+        print(out1)
+        
         diag_s = np.diag(s)
 
         # Step 3: Standard coordinates of rows, phi
         phi = diag_r_invroot @ u
+        dims = list(map(lambda x: 'Dim. ' + str(x), list(i for i in range(1, phi.shape[1]))))
+        self.rowcoord = pd.DataFrame(phi[:, :-1], index = self.rownames, columns = dims)
 
         # Step 4: Standard coordinates of columns, gamma
         gam = diag_c_invroot @ vt.T
+        self.colcoord = pd.DataFrame(gam[:, :-1], index = self.colnames, columns = dims)
 
         # Step 5 : Principal coordinates of rows, F
         f = phi @ diag_s
@@ -66,26 +77,51 @@ class ca:
         # Step 6: Principal coordinates of columns, G
         g = gam @ diag_s
 
-        # Step 7: Principal intertias
+        # Step 7: Principal intertias //not working
         # how to get chi-square distances? is this hidden somewhere around here?
+        '''
         diag_lambda = None
         if len(r) <= len(c):
             diag_lambda = f @ diag_r @ f.T
         else:
             diag_lambda = g @ diag_c @ g.T
-        print(diag_lambda)
+        '''
+        q_r = diag_r_inv @ p @ diag_c_inv @ p.T @ diag_r_inv
+        qq_r = np.array([np.diag(q_r)]).T
+        ones = np.ones((len(q_r), 1))
+        chi22_r = qq_r @ ones.T - ones @ qq_r.T + 2 * q_r
+        print(qq_r)
+        print(qq_r @ ones.T)
+        print(ones @ qq_r.T)
+        print(2 * q_r)
+        print(chi22_r)
 
         self.nd = None
         self.rowdist = None
         self.rowinertia = None
-        self.rowcoord = None
         self.rowsup = None
         self.coldist = None
         self.colinertia = None
-        self.colcoord = None
         self.colsup = None   
 
 
 if __name__ == "__main__":
     cont = pd.read_csv('src.csv', index_col=0, header=0)
     C = ca(cont)
+    '''
+    print(C.sv)
+    print(C.nd)
+    print(C.rownames)
+    print(C.rowmass)
+    print(C.rowdist)
+    print(C.rowinertia)
+    print(C.rowcoord)
+    print(C.rowsup)
+    print(C.colnames)
+    print(C.colmass)
+    print(C.coldist)
+    print(C.colinertia)
+    print(C.colcoord)
+    print(C.colsup)
+    print(C.N)
+    '''
