@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 
 
 class ca:
@@ -59,10 +60,15 @@ class ca:
         The frequency table
     """
 
-    def __init__(self, obj, nd=None, suprow=None, supcol=None,
-                 subsetrow=None, subsetcol=None):
+    def __init__(self,
+                 obj,
+                 nd=None,
+                 suprow=None,
+                 supcol=None,
+                 subsetrow=None,
+                 subsetcol=None):
         """
-        Python translation of ca.r found here:
+        Python port of ca.r found here:
         https://r-forge.r-project.org/scm/viewvc.php/?root=ca0
         """
         self.nd = nd
@@ -156,6 +162,77 @@ class ca:
                                     columns=self.colnames)
         out3 = f' Columns:\n{col_profiles}'
         return(f'\n{out1}\n\n{out2}\n\n{out3}')
+    
+    def plot(self,
+             dim=(1, 2),
+             map='symmetric',
+             what=('all', 'all'),
+             mass=(False, False),
+             contrib=('none', 'none'),
+             col=('blue', 'red'),
+             pch=('o', '^'),
+             labels=(2, 2),
+             arrows=(False, False),
+             lines=(False, False),
+             lwd=1,
+             xlab="_auto_",
+             ylab="_auto_",
+             col_lab=('blue', 'red')):
+        '''
+        Plotting ca objects
+        '''
+        # This is where I'll recycle input if given one value
+
+        # This is where I'll handle supplementary rows/columns for gab and green plotting
+
+        # This is where ca sign switches
+        # Principal Coordinates:
+        k = len(self.rowcoord.columns)
+        rpc = self.rowcoord * self.sv[:k]
+        cpc = self.colcoord * self.sv[:k]
+        symrpc = self.rowcoord * np.sqrt(self.sv[:k])
+        symcpc = self.colcoord * np.sqrt(self.sv[:k])
+        # Maptype
+        mtlut = {'symmetric': [rpc, cpc],
+                 'rowprincipal': [rpc, self.colcoord],
+                 'colprincipal': [self.rowcoord, cpc],
+                 'symbiplot': [symrpc, symcpc],
+                 'rowgab': [rpc, self.colcoord.multiply(self.colmass, axis=0)],
+                 'colgab': [self.rowcoord.multiply(self.rowmass, axis=0), cpc],
+                 'rowgreen': [rpc, self.colcoord.multiply(np.sqrt(self.colmass), axis=0)],
+                 'colgreen': [self.rowcoord.multiply(np.sqrt(self.rowmass), axis=0), cpc]}
+        x = mtlut[map][0]
+        y = mtlut[map][1]
+        # Profiles to plot
+
+        # Dimensions to plot (simple slice in ax.scatter)
+        # Build radius/mass vectors
+
+        # Build contribution/color intensity vectors
+
+        # Plot
+        ax = plt.axes()
+        ax.axvline(ls='--', lw=0.5, c='black')
+        ax.axhline(ls='--', lw=0.5, c='black')
+        # Set margins
+
+        # Label axes
+        ev = np.round(self.sv ** 2, decimals=6)
+        pct = np.round(100 * (ev / ev.sum()), decimals=1)
+        if xlab == '_auto_':
+            ax.set_xlabel(f'Dimension {dim[0]} ({pct[dim[0] - 1]}%)')
+        if ylab == '_auto_':
+            ax.set_ylabel(f'Dimension {dim[1]} ({pct[dim[1] - 1]}%)')
+        # Scatter and annotate
+        ax.scatter(x.iloc[:, dim[0] - 1], x.iloc[:, dim[1] - 1], marker=pch[0], c=col[0])
+        for a, b, z in zip(x.iloc[:, dim[0] - 1], x.iloc[:, dim[1] - 1], self.rownames):
+            label = z
+            plt.annotate(label, (a, b), c=col_lab[0])
+        ax.scatter(y.iloc[:, dim[0] - 1], y.iloc[:, dim[1] - 1], marker=pch[1], c=col[1])
+        for a, b, z in zip(y.iloc[:, dim[0] - 1], y.iloc[:, dim[1] - 1], self.colnames):
+            label = z
+            plt.annotate(label, (a, b), c=col_lab[1])
+        return ax
 
 
 if __name__ == "__main__":
@@ -165,3 +242,7 @@ if __name__ == "__main__":
     print(C)
     for attr, value in C.__dict__.items():
         print(f'\n\t{attr}\n{value}')
+    print('Testing plot maptypes')
+    for type in ('symmetric', 'rowprincipal', 'colprincipal', 'symbiplot', 'rowgab', 'colgab', 'rowgreen', 'colgreen'):
+        C.plot(map=type)
+        plt.show()
