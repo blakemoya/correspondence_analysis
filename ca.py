@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -120,7 +121,7 @@ class ca:
         self.colcoord = pd.DataFrame(gam, index=self.colnames, columns=dims)
         self.rowsup = None
         self.colsup = None
-        if self.nd == None:
+        if self.nd is None:
             self.nd = len(self.sv)
 
     def __str__(self):
@@ -162,8 +163,9 @@ class ca:
                                     columns=self.colnames)
         out3 = f' Columns:\n{col_profiles}'
         return(f'\n{out1}\n\n{out2}\n\n{out3}')
-    
+
     def plot(self,
+             ax=None,
              dim=(1, 2),
              map='symmetric',
              what=('all', 'all'),
@@ -183,7 +185,8 @@ class ca:
         '''
         # This is where I'll recycle input if given one value
 
-        # This is where I'll handle supplementary rows/columns for gab and green plotting
+        # This is where I'll handle supplementary rows/columns for gab and
+        # green plotting
 
         # This is where ca sign switches
         # Principal Coordinates:
@@ -193,16 +196,18 @@ class ca:
         symrpc = self.rowcoord * np.sqrt(self.sv[:k])
         symcpc = self.colcoord * np.sqrt(self.sv[:k])
         # Maptype
-        mtlut = {'symmetric': [rpc, cpc],
-                 'rowprincipal': [rpc, self.colcoord],
-                 'colprincipal': [self.rowcoord, cpc],
-                 'symbiplot': [symrpc, symcpc],
-                 'rowgab': [rpc, self.colcoord.multiply(self.colmass, axis=0)],
-                 'colgab': [self.rowcoord.multiply(self.rowmass, axis=0), cpc],
-                 'rowgreen': [rpc, self.colcoord.multiply(np.sqrt(self.colmass), axis=0)],
-                 'colgreen': [self.rowcoord.multiply(np.sqrt(self.rowmass), axis=0), cpc]}
-        x = mtlut[map][0]
-        y = mtlut[map][1]
+        mt = {'symmetric': [rpc, cpc],
+              'rowprincipal': [rpc, self.colcoord],
+              'colprincipal': [self.rowcoord, cpc],
+              'symbiplot': [symrpc, symcpc],
+              'rowgab': [rpc, self.colcoord.multiply(self.colmass, axis=0)],
+              'colgab': [self.rowcoord.multiply(self.rowmass, axis=0), cpc],
+              'rowgreen': [rpc, self.colcoord.multiply(np.sqrt(self.colmass),
+                                                       axis=0)],
+              'colgreen': [self.rowcoord.multiply(np.sqrt(self.rowmass),
+                                                  axis=0), cpc]}
+        x = mt[map][0]
+        y = mt[map][1]
         # Profiles to plot
 
         # Dimensions to plot (simple slice in ax.scatter)
@@ -211,7 +216,8 @@ class ca:
         # Build contribution/color intensity vectors
 
         # Plot
-        ax = plt.axes()
+        if ax is None:
+            ax = plt.axes()
         ax.axvline(ls='--', lw=0.5, c='black')
         ax.axhline(ls='--', lw=0.5, c='black')
         # Set margins
@@ -224,25 +230,39 @@ class ca:
         if ylab == '_auto_':
             ax.set_ylabel(f'Dimension {dim[1]} ({pct[dim[1] - 1]}%)')
         # Scatter and annotate
-        ax.scatter(x.iloc[:, dim[0] - 1], x.iloc[:, dim[1] - 1], marker=pch[0], c=col[0])
-        for a, b, z in zip(x.iloc[:, dim[0] - 1], x.iloc[:, dim[1] - 1], self.rownames):
+        ax.scatter(x.iloc[:, dim[0] - 1], x.iloc[:, dim[1] - 1],
+                   marker=pch[0],
+                   c=col[0])
+        for a, b, z in zip(x.iloc[:, dim[0] - 1], x.iloc[:, dim[1] - 1],
+                           self.rownames):
             label = z
-            plt.annotate(label, (a, b), c=col_lab[0])
-        ax.scatter(y.iloc[:, dim[0] - 1], y.iloc[:, dim[1] - 1], marker=pch[1], c=col[1])
-        for a, b, z in zip(y.iloc[:, dim[0] - 1], y.iloc[:, dim[1] - 1], self.colnames):
+            plt.annotate(label, (a, b), color=col_lab[0])
+        ax.scatter(y.iloc[:, dim[0] - 1], y.iloc[:, dim[1] - 1],
+                   marker=pch[1],
+                   c=col[1])
+        for a, b, z in zip(y.iloc[:, dim[0] - 1], y.iloc[:, dim[1] - 1],
+                           self.colnames):
             label = z
-            plt.annotate(label, (a, b), c=col_lab[1])
+            plt.annotate(label, (a, b), color=col_lab[1])
         return ax
 
 
 if __name__ == "__main__":
-    print('Testing with src.csv')
-    cont = pd.read_csv('src.csv', index_col=0, header=0)
-    C = ca(cont)
-    print(C)
-    for attr, value in C.__dict__.items():
-        print(f'\n\t{attr}\n{value}')
-    print('Testing plot maptypes')
-    for type in ('symmetric', 'rowprincipal', 'colprincipal', 'symbiplot', 'rowgab', 'colgab', 'rowgreen', 'colgreen'):
-        C.plot(map=type)
+    for example in os.listdir('data'):
+        print(f'Testing with {example}')
+        cont = pd.read_csv(f'data/{example}', index_col=0, header=0)
+        C = ca(cont)
+        print(C)
+        for attr, value in C.__dict__.items():
+            print(f'\n\t{attr}\n{value}')
+        print(f'Testing plot maptypes on {example}')
+        fig = plt.figure()
+        for n, type in enumerate(['symmetric', 'rowprincipal', 'colprincipal',
+                                  'symbiplot', 'rowgab', 'colgab', 'rowgreen',
+                                  'colgreen']):
+            ax = fig.add_subplot(2, 4, n + 1)
+            ax.set_title(type)
+            C.plot(ax=ax, map=type)
+        mng = plt.get_current_fig_manager()
+        mng.window.state('zoomed')
         plt.show()
