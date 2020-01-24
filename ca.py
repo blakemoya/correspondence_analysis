@@ -72,57 +72,149 @@ class ca:
         Python port of ca.r found here:
         https://r-forge.r-project.org/scm/viewvc.php/?root=ca0
         """
-        self.nd = nd
+        nd0 = nd
         i = len(obj.index)
         j = len(obj.columns)
-        self.rownames = obj.index.values
-        self.colnames = obj.columns.values
-        self.N = obj.values
-        # This is where I'll handle supplementary rows/columns
+        rn = obj.index.values
+        cn = obj.columns.values
+        N = obj # .values
+        # Tempororily remove supplementary rows/columns
+        Ntemp = N
+        NtempC = N
+        NtempR = N
+        # Greenacre sorts suprow/col. Don't think I need to bc pandas
+        if supcol is not None and suprow is not None:
+            NtempC = Ntemp.drop(suprow, axis=0)
+            NtempR = Ntemp.drop(supcol, axis=1)
+        if supcol is not None:
+            sc = NtempC[supcol]
+            Ntemp = Ntemp.drop(supcol, axis=1)
+            cs_sum = sc.sum(axsi=0)
+        if suprow is not None:
+            sr = Ntemp.loc[suprow]
+            Ntemp = Ntemp.drop(suprow, axis=0)
+            rs_sum = sr.sum(axis=1)
+        N = Ntemp
+        # Adjust for subset CA
+        # Skipping all index adjustments for now
 
-        # This is where I'll adjust for subset CA
-
+        # Check for subset CA
+        dim_N = N.shape
+        if subsetrow is not None:
+            if supcol is not None:
+                sc = sc.loc[subsetrow]
+            if subsetcol is not None:
+                sr = sr[subsetcol]
+        # End subset CA
+        if subsetrow is None and subsetcol is None:
+            nd_max = min(N.shape) - 1
+        else:
+            N00 = N
+            if subsetrow is None:
+                N00 = N00.loc[subsetrow]
+            if subsetcol is None:
+                N00 = N00[subsetcol]
+            dim_N = N00.shape
+            nd_max = min(N.shape)
+            if subsetrow is not None and subsetcol is None:
+                if (dim_N[0] > dim_N[1]):
+                    nd_max = min(dim_N) - 1
+                elif subsetrow is None and subsetcol is not None:
+                    if dim_N[1] > dim_N[0]:
+                        nd_max = min(dim_N) - 1
+        if nd is None or nd > nd_max:
+            nd = nd_max
         # Init:
         n = obj.sum().sum()
-        p = self.N / n
-        self.rowmass = p.sum(axis=1)
-        self.colmass = p.sum(axis=0)
+        p = N / n
+        rm = p.sum(axis=1) # is this reversed between numpy and pandas?
+        cm = p.sum(axis=0)
         # SVD:
-        expected_p = np.outer(self.rowmass, self.colmass)
+        expected_p = np.outer(rm, cm)
         expected_N = expected_p * n
-        s = (p - expected_p) / np.sqrt(expected_p)
-        # This is where I'll do subset CA
-
-        chimat = s ** 2 * n
-        u, sv, vt = np.linalg.svd(s, full_matrices=False)
-        self.sv = sv[:-1]  # This should later become [:nd.max]
-        ev = self.sv ** 2
+        S = (p - expected_p) / np.sqrt(expected_p)
+        # Subset CA
+        if subsetcol is not None:
+            S = S[subsetcol]
+            cm = cm[subsetcol]
+            cn = cn[subsetcol] # Originally subsetcolt
+        if subsetrow is not None:
+            S = S.loc[subsetrow]
+            rm = rm[subsetrow]
+            rn = rn[subsetrow] # Originally subsetrowt
+        # End sCA
+        chimat = S ** 2 * n
+        u, sv, vt = np.linalg.svd(S, full_matrices=False)
+        sv = sv[:nd_max]
+        ev = sv ** 2
         cumev = np.cumsum(ev)
         # Intertia:
         totin = ev.sum()
-        self.rowinertia = (s ** 2).sum(axis=1)
-        self.colinertia = (s ** 2).sum(axis=0)
-        # chidist
-        self.rowdist = np.sqrt(self.rowinertia / self.rowmass)
-        self.coldist = np.sqrt(self.colinertia / self.colmass)
-        # This is where I'll handle subset CA and supplementary row/columns
-
+        rin = (S ** 2).sum(axis=1)
+        cin = (S ** 2).sum(axis=0)
+        # Chidist
+        rachidist = np.sqrt(rin / rm)
+        cachidist = np.sqrt(cin / cm)
+        rchidist = rachidist # Originally nans(i)
+        cchidist = cachidist # Originally nans(j)
+        if subsetrow is not None:
+            obj = obj.loc[subsetrow] # Originally subsetrowt
+        if subsetcol is not None:
+            obj = obj[subsetcol] # Originally subsetcolt
+        # Handle supplementary row/columns
+        if suprow is not None:
+            if supcol is None:
+                P_stemp = obj.loc[suprow]
+            else:
+                pass
+            P_stemp = P_stemp / P_stemp.sum(axis=1)
+            P_stemp = ((P_stemp.T - cm) / np.sqrt(cm)).T
+            rschidist = np.sqrt((P_stemp ** 2).sum(axis=1))
+            rchidist = rchidist.append(pd.Series(rschidist, index=suprow))
+        if supcol is not None:
+            if suprow is None:
+                pass
+            pass
         # Standard coordinates:
-        phi = np.divide(u[:, :-1], np.sqrt(self.rowmass)[np.newaxis, :].T)
-        # [:, :nd.max ]
-        gam = np.divide(vt.T[:, :-1], np.sqrt(self.colmass)[np.newaxis, :].T)
-        # [:, :nd.max ]
-        # This is where I'll handle standard coordinates for supplementary
-        # rows/columns
-
-        dims = list(map(lambda x: 'Dim. ' + str(x),
-                    list(i for i in range(1, phi.shape[1] + 1))))
-        self.rowcoord = pd.DataFrame(phi, index=self.rownames, columns=dims)
-        self.colcoord = pd.DataFrame(gam, index=self.colnames, columns=dims)
-        self.rowsup = None
-        self.colsup = None
-        if self.nd is None:
-            self.nd = len(self.sv)
+        phi = np.divide(u[:, :nd], np.sqrt(rm)[np.newaxis, :].T)
+        phi = pd.DataFrame(phi, index=rn[~np.isin(rn, suprow)])
+        gam = np.divide(vt.T[:, :nd], np.sqrt(cm)[np.newaxis, :].T)
+        gam = pd.DataFrame(gam, index=cn[~np.isin(cn, supcol)])
+        # Standard coordinates for supplementary rows/columns
+        if suprow is not None:
+            cs = cm
+            base2 = (sr.divide(rs_sum, axis=0) - cs)
+            phi2 = (base2 @ gam).divide(sv[:nd], axis=1)
+            phi3 = phi.append(phi2)
+            rm_old = rm
+            rm0 = rm.append(pd.Series(np.zeros(len(suprow)), index=suprow))
+            rm = rm0
+            rin = rin.append(pd.Series(np.zeros(len(suprow)), index=suprow))
+        if supcol is not None:
+            if suprow is not None:
+                rs = rm_old
+            else:
+                rs = rm
+            pass
+        if 'phi3' in locals() or 'phi3' in globals():
+            phi = phi3
+        if 'gam3' in locals() or 'gam3' in globals():
+            gam = gam3
+        self.sv = sv
+        self.nd = nd
+        self.rownames = rn
+        self.rowmass = rm
+        self.rowdist = rchidist
+        self.rowinertia = rin
+        self.rowcoord = phi.rename(columns=lambda c: 'Dim. ' + str(c + 1))
+        self.rowsup = suprow
+        self.colnames = cn
+        self.colmass = cm
+        self.coldist = cchidist
+        self.colinertia = cin
+        self.colcoord = gam.rename(columns=lambda c: 'Dim. ' + str(c + 1))
+        self.colsup = supcol
+        self.N = N
 
     def __str__(self):
         """
@@ -246,8 +338,7 @@ class ca:
             plt.annotate(label, (a, b), color=col_lab[1])
         return ax
 
-
-if __name__ == "__main__":
+def basic_test():
     for example in os.listdir('data'):
         print(f'Testing with {example}')
         cont = pd.read_csv(f'data/{example}', index_col=0, header=0)
@@ -264,5 +355,19 @@ if __name__ == "__main__":
             ax.set_title(type)
             C.plot(ax=ax, map=type)
         mng = plt.get_current_fig_manager()
-        mng.window.state('zoomed')
+        try:
+            mng.window.state('zoomed')
+        except:
+            print('Unable to maximize window')
         plt.show()
+
+if __name__ == "__main__":
+    for example in os.listdir('data')[1:]:
+        print(f'Testing suprow with {example}')
+        cont = pd.read_csv(f'data/{example}', index_col=0, header=0)
+        supr = cont.index.values[0:1]
+        print(cont)
+        C = ca(cont, suprow=supr)
+        print(C)
+        for attr, value in C.__dict__.items():
+            print(f'\n\t{attr}\n{value}')
