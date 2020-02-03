@@ -19,9 +19,9 @@ class ca:
         Number of dimensions to be included in the output; if None the maximum
         number possible dimensions are included.
     suprow : //not yet implemented
-        Indices of supplementary rows.
+        Names of supplementary rows.
     supcol : //not yet implemented
-        Indices of supplementary columns.
+        Names of supplementary columns.
     subsetrow : //not yet implemented
 
     subsetcol : //not yet implemented
@@ -43,8 +43,8 @@ class ca:
         Row inertias
     rowcoord : pandas.DataFrame
         Row standard coordinates
-    rowsup : //not yet implemented
-        Indices of supplementary row points
+    rowsup :
+        Names of supplementary row points
     colnames : numpy.ndarray
         Column names
     colmass : numpy.ndarray
@@ -110,9 +110,9 @@ class ca:
             nd_max = min(N.shape) - 1
         else:
             N00 = N
-            if subsetrow is None:
+            if subsetrow is not None:
                 N00 = N00.loc[subsetrow]
-            if subsetcol is None:
+            if subsetcol is not None:
                 N00 = N00[subsetcol]
             dim_N = N00.shape
             nd_max = min(N.shape)
@@ -125,7 +125,7 @@ class ca:
         if nd is None or nd > nd_max:
             nd = nd_max
         # Init:
-        n = obj.sum().sum()
+        n = N.sum().sum()
         p = N / n
         rm = p.sum(axis=1) # is this reversed between numpy and pandas?
         cm = p.sum(axis=0)
@@ -167,10 +167,10 @@ class ca:
                 P_stemp = obj.loc[suprow]
             else:
                 pass
-            P_stemp = P_stemp / P_stemp.sum(axis=1)
-            P_stemp = ((P_stemp.T - cm) / np.sqrt(cm)).T
+            P_stemp = P_stemp.divide(P_stemp.sum(axis=1), axis=0)
+            P_stemp = (P_stemp - cm) / np.sqrt(cm)
             rschidist = np.sqrt((P_stemp ** 2).sum(axis=1))
-            rchidist = rchidist.append(pd.Series(rschidist, index=suprow))
+            rchidist = rchidist.append(rschidist)
         if supcol is not None:
             if suprow is None:
                 pass
@@ -227,32 +227,22 @@ class ca:
                                    index=['Value', 'Percentage'],
                                    columns=range(1, self.nd + 1))
         eigenvalues.loc['Percentage'] = (eigenvalues.loc['Percentage']
-                                         .apply('{:.1%}'.format))
+                                         .apply('{:.2%}'.format))
         out1 = f' Principal inertias (eigenvalues):\n{eigenvalues}'
-        # Row Profiles:
-        tmp_values = np.hstack((self.rowmass[:, np.newaxis],
-                                self.rowdist[:, np.newaxis],
-                                self.rowinertia[:, np.newaxis],
-                                self.rowcoord)).T
-        # This is where I'll handle supplementary rows
-
-        dims = list(map(lambda x: 'Dim. ' + str(x),
-                    list(i for i in range(1, self.nd + 1))))
-        row_profiles = pd.DataFrame(tmp_values,
-                                    index=(['Mass', 'ChiDist', 'Inertia'] +
-                                           dims),
-                                    columns=self.rownames)
+        row_profiles = pd.concat([self.rowmass,
+                                  self.rowdist,
+                                  self.rowinertia,
+                                  self.rowcoord],
+                                  axis=1).T
+        row_profiles = row_profiles.rename(index={0: 'Mass', 1: 'ChiDist', 2: 'Inertia'})
         out2 = f' Rows:\n{row_profiles}'
         # Column Profiles:
-        tmp_values = np.hstack((self.colmass[:, np.newaxis],
-                                self.coldist[:, np.newaxis],
-                                self.colinertia[:, np.newaxis],
-                                self.colcoord)).T
-        # This is where I'll handle supplementary columns
-        col_profiles = pd.DataFrame(tmp_values,
-                                    index=(['Mass', 'ChiDist', 'Inertia'] +
-                                           dims),
-                                    columns=self.colnames)
+        col_profiles = pd.concat([self.colmass,
+                                  self.coldist,
+                                  self.colinertia,
+                                  self.colcoord],
+                                  axis=1).T
+        col_profiles = col_profiles.rename(index={0: 'Mass', 1: 'ChiDist', 2: 'Inertia'})
         out3 = f' Columns:\n{col_profiles}'
         return(f'\n{out1}\n\n{out2}\n\n{out3}')
 
@@ -277,9 +267,15 @@ class ca:
         '''
         # This is where I'll recycle input if given one value
 
-        # This is where I'll handle supplementary rows/columns for gab and
-        # green plotting
-
+        # Original here if `if (!is.numeric(x$suprow))`, what does that do?
+        '''if self.suprow is None:
+            if map == 'colgab' or map == 'colgreen':
+                if what[0] is not 'none':
+                    what[0] = 'active'
+        if self.supcol is None:
+            if map == 'rowgab' or map == 'rowgreen':
+                if what[1] is not 'none':
+                    what[1] = 'active'''
         # This is where ca sign switches
         # Principal Coordinates:
         k = len(self.rowcoord.columns)
@@ -298,8 +294,16 @@ class ca:
                                                        axis=0)],
               'colgreen': [self.rowcoord.multiply(np.sqrt(self.rowmass),
                                                   axis=0), cpc]}
-        x = mt[map][0]
-        y = mt[map][1]
+        x = mt[map][0].copy(deep=True)
+        y = mt[map][1].copy(deep=True)
+        if self.rowsup is not None:
+            x['sup'] = np.where(x.index.isin(self.rowsup), 'none', col[0])
+        else:
+            x['sup'] = col[0]
+        if self.colsup is not None:
+            y['sup'] = np.where(y.index.isin(self.colsup), 'none', col[1])
+        else:
+            y['sup'] = col[1]
         # Profiles to plot
 
         # Dimensions to plot (simple slice in ax.scatter)
@@ -324,16 +328,18 @@ class ca:
         # Scatter and annotate
         ax.scatter(x.iloc[:, dim[0] - 1], x.iloc[:, dim[1] - 1],
                    marker=pch[0],
-                   c=col[0])
+                   edgecolors=col[0],
+                   facecolors=x['sup'].values)
         for a, b, z in zip(x.iloc[:, dim[0] - 1], x.iloc[:, dim[1] - 1],
-                           self.rownames):
+                           self.rowcoord.index.values):
             label = z
             plt.annotate(label, (a, b), color=col_lab[0])
         ax.scatter(y.iloc[:, dim[0] - 1], y.iloc[:, dim[1] - 1],
                    marker=pch[1],
-                   c=col[1])
+                   edgecolors=col[1],
+                   facecolors=y['sup'].values)
         for a, b, z in zip(y.iloc[:, dim[0] - 1], y.iloc[:, dim[1] - 1],
-                           self.colnames):
+                           self.colcoord.index.values):
             label = z
             plt.annotate(label, (a, b), color=col_lab[1])
         return ax
@@ -362,7 +368,7 @@ def basic_test():
         plt.show()
 
 if __name__ == "__main__":
-    for example in os.listdir('data')[1:]:
+    for example in os.listdir('data'):
         print(f'Testing suprow with {example}')
         cont = pd.read_csv(f'data/{example}', index_col=0, header=0)
         supr = cont.index.values[0:1]
@@ -371,3 +377,17 @@ if __name__ == "__main__":
         print(C)
         for attr, value in C.__dict__.items():
             print(f'\n\t{attr}\n{value}')
+        print(f'Testing plot maptypes on {example}')
+        fig = plt.figure()
+        for n, type in enumerate(['symmetric', 'rowprincipal', 'colprincipal',
+                                  'symbiplot', 'rowgab', 'colgab', 'rowgreen',
+                                  'colgreen']):
+            ax = fig.add_subplot(2, 4, n + 1)
+            ax.set_title(type)
+            C.plot(ax=ax, map=type)
+        mng = plt.get_current_fig_manager()
+        try:
+            mng.window.state('zoomed')
+        except:
+            print('Unable to maximize window')
+        plt.show()
