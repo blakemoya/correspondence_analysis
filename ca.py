@@ -18,10 +18,10 @@ class ca:
     nd : int //not yet implemented
         Number of dimensions to be included in the output; if None the maximum
         number possible dimensions are included.
-    suprow : //not yet implemented
-        Names of supplementary rows.
-    supcol : //not yet implemented
-        Names of supplementary columns.
+    suprow : 
+        A list of names of supplementary rows.
+    supcol : 
+        A list of names of supplementary columns.
     subsetrow : //not yet implemented
 
     subsetcol : //not yet implemented
@@ -78,7 +78,7 @@ class ca:
         rn = obj.index.values
         cn = obj.columns.values
         N = obj # .values
-        # Tempororily remove supplementary rows/columns
+        # Temporarily remove supplementary rows/columns
         Ntemp = N
         NtempC = N
         NtempR = N
@@ -89,7 +89,7 @@ class ca:
         if supcol is not None:
             sc = NtempC[supcol]
             Ntemp = Ntemp.drop(supcol, axis=1)
-            cs_sum = sc.sum(axsi=0)
+            cs_sum = sc.sum(axis=0)
         if suprow is not None:
             sr = Ntemp.loc[suprow]
             Ntemp = Ntemp.drop(suprow, axis=0)
@@ -166,15 +166,20 @@ class ca:
             if supcol is None:
                 P_stemp = obj.loc[suprow]
             else:
-                pass
+                P_stemp = obj.loc[suprow, ~obj.columns.isin(supcol)]
             P_stemp = P_stemp.divide(P_stemp.sum(axis=1), axis=0)
             P_stemp = (P_stemp - cm) / np.sqrt(cm)
             rschidist = np.sqrt((P_stemp ** 2).sum(axis=1))
             rchidist = rchidist.append(rschidist)
         if supcol is not None:
             if suprow is None:
-                pass
-            pass
+                P_stemp = obj[supcol]
+            else:
+                P_stemp = obj.loc[~obj.index.isin(suprow), supcol]
+            P_stemp = P_stemp.divide(P_stemp.sum(axis=0), axis=1)
+            P_stemp = ((P_stemp.T - rm) / np.sqrt(rm)).T
+            cschidist = np.sqrt((P_stemp ** 2).sum(axis=0))
+            cchidist = cchidist.append(cschidist)
         # Standard coordinates:
         phi = np.divide(u[:, :nd], np.sqrt(rm)[np.newaxis, :].T)
         phi = pd.DataFrame(phi, index=rn[~np.isin(rn, suprow)])
@@ -182,24 +187,23 @@ class ca:
         gam = pd.DataFrame(gam, index=cn[~np.isin(cn, supcol)])
         # Standard coordinates for supplementary rows/columns
         if suprow is not None:
-            cs = cm
-            base2 = (sr.divide(rs_sum, axis=0) - cs)
-            phi2 = (base2 @ gam).divide(sv[:nd], axis=1)
-            phi3 = phi.append(phi2)
+            base = sr.divide(rs_sum, axis=0) - cm
+            phi_s = (base @ gam).divide(sv[:nd], axis=1)
+            phi_s = phi.append(phi_s)
             rm_old = rm
-            rm0 = rm.append(pd.Series(np.zeros(len(suprow)), index=suprow))
-            rm = rm0
-            rin = rin.append(pd.Series(np.zeros(len(suprow)), index=suprow))
+            rm = rm.append(pd.Series(np.empty(len(suprow)), index=suprow))
+            rin = rin.append(pd.Series(np.empty(len(suprow)), index=suprow))
         if supcol is not None:
             if suprow is not None:
-                rs = rm_old
+                base = sc.divide(cs_sum, axis=1).T - rm_old
             else:
-                rs = rm
-            pass
-        if 'phi3' in locals() or 'phi3' in globals():
-            phi = phi3
-        if 'gam3' in locals() or 'gam3' in globals():
-            gam = gam3
+                base = sc.divide(cs_sum, axis=1).T - rm
+            gam_c = (base @ phi).divide(sv[:nd], axis=1)
+            gam = gam.append(gam_c)
+            cm = cm.append(pd.Series(np.empty(len(supcol)), index=supcol))
+            cin = cin.append(pd.Series(np.empty(len(supcol)), index=supcol))
+        if 'phi_s' in locals() or 'phi_s' in globals():
+            phi = phi_s
         self.sv = sv
         self.nd = nd
         self.rownames = rn
@@ -367,13 +371,14 @@ def basic_test():
             print('Unable to maximize window')
         plt.show()
 
-if __name__ == "__main__":
-    for example in os.listdir('data'):
+def suppl_test():
+    for example in os.listdir('data')[0::2]:
         print(f'Testing suprow with {example}')
         cont = pd.read_csv(f'data/{example}', index_col=0, header=0)
         supr = cont.index.values[0:1]
+        supc = cont.columns.values[0:1]
         print(cont)
-        C = ca(cont, suprow=supr)
+        C = ca(cont, suprow=supr, supcol=supc)
         print(C)
         for attr, value in C.__dict__.items():
             print(f'\n\t{attr}\n{value}')
@@ -391,3 +396,6 @@ if __name__ == "__main__":
         except:
             print('Unable to maximize window')
         plt.show()
+
+if __name__ == "__main__":
+    basic_test()
